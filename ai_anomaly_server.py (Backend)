@@ -1,0 +1,41 @@
+from flask import Flask, request
+from sklearn.ensemble import IsolationForest
+import numpy as np
+import hmac, hashlib
+
+app = Flask(__name__)
+SECRET_KEY = "ADITYA_SECURE_KEY_99"
+
+# Train ML model with normal data range (25-34 Celsius)
+np.random.seed(42)
+train_data = np.random.uniform(25, 34, (100, 1))
+model = IsolationForest(contamination=0.1, random_state=42)
+model.fit(train_data)
+
+@app.route('/data', methods=['POST'])
+def handle_data():
+    temp_str = request.form.get('temp')
+    received_sig = request.form.get('signature')
+
+    if not temp_str or not received_sig:
+        return "Unauthorized", 401
+
+    # 1. Verification (Integrity Check)
+    expected_sig = hmac.new(SECRET_KEY.encode(), temp_str.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_sig, received_sig):
+        print("[SECURITY] Blocked: Invalid HMAC Signature!")
+        return "Forbidden", 403
+
+    # 2. AI Prediction
+    temp_val = float(temp_str)
+    prediction = model.predict([[temp_val]])[0]
+
+    if prediction == -1 or temp_val > 35.0:
+        print(f"[ALERT] Anomaly: {temp_val}C")
+        return "Anomaly", 202
+    
+    print(f"[OK] Normal: {temp_val}C")
+    return "Normal", 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
