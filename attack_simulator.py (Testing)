@@ -1,0 +1,12 @@
+import requests, hmac, hashlib
+
+URL = "http://YOUR_LAPTOP_IP:5000/data"
+KEY = "ADITYA_SECURE_KEY_99"
+
+def simulate(temp):
+    sig = hmac.new(KEY.encode(), str(temp).encode(), hashlib.sha256).hexdigest()
+    r = requests.post(URL, data={'temp': temp, 'signature': sig})
+    print(f"Sent: {temp}C | Server Response: {r.status_code}")
+
+if __name__ == "__main__":
+    simulate(150.0) # This will trigger the AI Anomaly
