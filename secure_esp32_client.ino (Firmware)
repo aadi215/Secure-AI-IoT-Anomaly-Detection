@@ -1,0 +1,56 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <DHT.h>
+#include "mbedtls/md.h"
+
+#define DHTPIN 14
+#define DHTTYPE DHT11
+#define ALARM_PIN 4 
+
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_PASSWORD";
+const char* serverUrl = "http://YOUR_LAPTOP_IP:5000/data";
+const char* secret_key = "ADITYA_SECURE_KEY_99";
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  pinMode(ALARM_PIN, OUTPUT);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    float temp = dht.readTemperature();
+    if (isnan(temp)) return;
+
+    // HMAC-SHA256 Logic
+    byte hmacResult[32];
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char *) secret_key, strlen(secret_key));
+    mbedtls_md_hmac_update(&ctx, (const unsigned char *) String(temp).c_str(), String(temp).length());
+    mbedtls_md_hmac_finish(&ctx, hmacResult);
+    mbedtls_md_free(&ctx);
+
+    String hmacStr = "";
+    for (int i = 0; i < 32; i++) {
+      char str[3]; sprintf(str, "%02x", (int)hmacResult[i]); hmacStr += str;
+    }
+
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    int code = http.POST("temp=" + String(temp) + "&signature=" + hmacStr);
+
+    if (code == 202) { 
+      digitalWrite(ALARM_PIN, HIGH); delay(1000); digitalWrite(ALARM_PIN, LOW); 
+    }
+    http.end();
+    delay(3000);
+  }
+}
